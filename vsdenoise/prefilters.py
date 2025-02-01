@@ -767,12 +767,12 @@ class MultiPrefilter(PrefBase):  # type: ignore
         return clip
 
 
-def prefilter_to_full_range(pref: vs.VideoNode, range_conversion: float, planes: PlanesT = None) -> vs.VideoNode:
+def prefilter_to_full_range(clip: vs.VideoNode, range_conversion: float, planes: PlanesT = None) -> vs.VideoNode:
     """
     Convert a limited range clip to full range.\n
     Useful for expanding prefiltered clip's ranges to give motion estimation additional information to work with.
 
-    :param pref:                Clip to be preprocessed.
+    :param clip:                Clip to be preprocessed.
     :param range_conversion:    Value which determines what range conversion method gets used.\n
                                  * >= 1.0 - Expansion with expr based on this coefficient.
                                  * >  0.0 - Expansion with retinex.
@@ -781,12 +781,11 @@ def prefilter_to_full_range(pref: vs.VideoNode, range_conversion: float, planes:
 
     :return:                    Full range clip.
     """
+    planes = normalize_planes(clip, planes)
 
-    planes = normalize_planes(pref, planes)
+    work_clip, *chroma = split(clip) if planes == [0] else (clip, )
 
-    work_clip, *chroma = split(pref) if planes == [0] else (pref, )
-
-    assert (fmt := work_clip.format) and pref.format
+    assert (fmt := work_clip.format) and clip.format
 
     is_integer = fmt.sample_type == vs.INTEGER
 
@@ -799,8 +798,8 @@ def prefilter_to_full_range(pref: vs.VideoNode, range_conversion: float, planes:
         k = (range_conversion - 1) * c
 
         if is_integer:
-            t = f'x {scale_value(16, 8, pref)} '
-            t += f'- {scale_value(219, 8, pref)} '
+            t = f'x {scale_value(16, 8, clip)} '
+            t += f'- {scale_value(219, 8, clip)} '
             t += f'/ {ExprOp.clamp(0, 1)}'
         else:
             t = ExprOp.clamp(0, 1, 'x').to_str()
@@ -820,9 +819,9 @@ def prefilter_to_full_range(pref: vs.VideoNode, range_conversion: float, planes:
     elif range_conversion > 0.0:
         pref_full = retinex(work_clip, upper_thr=range_conversion, fast=False)
     else:
-        pref_full = depth(work_clip, pref, range_out=ColorRange.FULL)
+        pref_full = depth(work_clip, clip, range_out=ColorRange.FULL)
 
     if chroma:
-        return join(pref_full, *chroma, family=pref.format.color_family)
+        return join(pref_full, *chroma, family=clip.format.color_family)
 
     return pref_full
